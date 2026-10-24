@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Ứng dụng nhỏ minh họa pipeline CI/CD từ code đến production.">
+    <title>CI/CD Task Board</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <main class="shell">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">From commit to container</p>
+          <h1>CI/CD Task Board</h1>
+          <p class="subtitle">Mỗi thay đổi tốt đều đi qua kiểm thử, build image và health check.</p>
+        </div>
+        <div class="release-card" aria-label="Thông tin phiên bản">
+          <span class="release-dot"></span>
+          <div>
+            <strong id="release-version">Đang tải…</strong>
+            <small id="release-commit">commit —</small>
+          </div>
+        </div>
+      </header>
+
+      <section class="pipeline" aria-label="Các bước pipeline">
+        <span>Code</span><i>→</i><span>Test</span><i>→</i><span>Image</span><i>→</i><span>Deploy</span>
+      </section>
+
+      <section class="board">
+        <form id="task-form" class="task-form">
+          <label for="task-title">Công việc tiếp theo</label>
+          <div class="form-row">
+            <input id="task-title" name="title" minlength="2" maxlength="120" placeholder="Ví dụ: Viết unit test" required>
+            <button type="submit">Thêm task</button>
+          </div>
+          <p id="form-error" class="error" role="alert"></p>
+        </form>
+
+        <div class="toolbar">
+          <div class="filters" aria-label="Lọc công việc">
+            <button class="filter active" data-filter="all" type="button">Tất cả</button>
+            <button class="filter" data-filter="open" type="button">Đang làm</button>
+            <button class="filter" data-filter="done" type="button">Hoàn thành</button>
+          </div>
+          <span id="task-count" class="task-count">0 task</span>
+        </div>
+
+        <ul id="task-list" class="task-list" aria-live="polite"></ul>
+        <p id="empty-state" class="empty-state">Chưa có task nào. Hãy tạo thay đổi đầu tiên.</p>
+      </section>
+    </main>
+
+    <template id="task-template">
+      <li class="task-item">
+        <label>
+          <input class="task-toggle" type="checkbox">
+          <span class="task-title"></span>
+        </label>
+        <button class="delete-button" type="button" aria-label="Xóa task">×</button>
+      </li>
+    </template>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

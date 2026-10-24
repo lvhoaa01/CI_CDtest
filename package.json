@@ -1,0 +1,22 @@
+{
+  "name": "ci-cd-task-board",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "A small Node.js application that demonstrates an end-to-end CI/CD pipeline.",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "node --watch src/server.mjs",
+    "start": "node dist/src/server.mjs",
+    "start:source": "node src/server.mjs",
+    "lint": "eslint .",
+    "test": "node --test",
+    "test:coverage": "node --test --experimental-test-coverage --test-coverage-lines=80 --test-coverage-branches=60 --test-coverage-functions=80",
+    "build": "node scripts/build.mjs"
+  },
+  "devDependencies": {
+    "eslint": "^10.13.0"
+  }
+}

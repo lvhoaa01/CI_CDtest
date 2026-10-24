@@ -1,0 +1,26 @@
+name: ci-cd-task-board
+
+services:
+  app:
+    image: ${APP_IMAGE:-ci-cd-task-board:local}
+    build:
+      context: .
+      args:
+        APP_VERSION: ${APP_VERSION:-local}
+        COMMIT_SHA: ${COMMIT_SHA:-development}
+    environment:
+      APP_VERSION: ${APP_VERSION:-local}
+      COMMIT_SHA: ${COMMIT_SHA:-development}
+      PORT: 3000
+    ports:
+      - "${APP_PORT:-3000}:3000"
+    restart: unless-stopped
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s

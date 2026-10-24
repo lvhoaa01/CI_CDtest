@@ -1,0 +1,167 @@
+name: CI/CD pipeline
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: pipeline-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '22'
+
+jobs:
+  quality:
+    name: CI - lint, test and build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test with coverage
+        run: npm run test:coverage
+
+      - name: Build immutable application artifact
+        env:
+          APP_VERSION: 1.0.${{ github.run_number }}
+          COMMIT_SHA: ${{ github.sha }}
+        run: npm run build
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: application-${{ github.sha }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 14
+
+  container:
+    name: CI - container and smoke test
+    needs: quality
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ steps.image.outputs.ref }}
+      version: ${{ steps.image.outputs.version }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Calculate immutable image identity
+        id: image
+        shell: bash
+        run: |
+          image_name="ghcr.io/${GITHUB_REPOSITORY,,}"
+          version="1.0.${GITHUB_RUN_NUMBER}"
+          {
+            echo "ref=${image_name}:sha-${GITHUB_SHA}"
+            echo "latest=${image_name}:latest"
+            echo "version=${version}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build Docker image
+        run: |
+          docker build \
+            --build-arg APP_VERSION="${{ steps.image.outputs.version }}" \
+            --build-arg COMMIT_SHA="${{ github.sha }}" \
+            --tag "${{ steps.image.outputs.ref }}" \
+            .
+
+      - name: Smoke test container
+        shell: bash
+        run: |
+          container_id="$(docker run --detach --publish 127.0.0.1::3000 '${{ steps.image.outputs.ref }}')"
+          trap 'docker logs "$container_id"; docker rm --force "$container_id"' EXIT
+          host_port="$(docker port "$container_id" 3000/tcp | cut -d: -f2)"
+          for _ in {1..20}; do
+            if curl --fail --silent "http://127.0.0.1:${host_port}/health"; then
+              exit 0
+            fi
+            sleep 1
+          done
+          exit 1
+
+      - name: Log in to GitHub Container Registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish immutable and latest tags
+        if: github.event_name != 'pull_request'
+        run: |
+          docker push "${{ steps.image.outputs.ref }}"
+          docker tag "${{ steps.image.outputs.ref }}" "${{ steps.image.outputs.latest }}"
+          docker push "${{ steps.image.outputs.latest }}"
+
+  deploy:
+    name: CD - deploy production
+    needs: container
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: ${{ vars.PRODUCTION_URL }}
+    permissions:
+      contents: read
+    env:
+      DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+      DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
+      DEPLOY_USER: ${{ vars.DEPLOY_USER }}
+      IMAGE_REF: ${{ needs.container.outputs.image }}
+      RELEASE_VERSION: ${{ needs.container.outputs.version }}
+    steps:
+      - name: Check out deployment files
+        uses: actions/checkout@v4
+
+      - name: Configure SSH
+        shell: bash
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+
+      - name: Copy deployment definition
+        run: |
+          scp compose.yaml scripts/deploy.sh scripts/rollback.sh \
+            "${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_PATH}/"
+
+      - name: Deploy and verify health
+        run: |
+          # Values intentionally expand on the trusted CI runner before SSH.
+          # shellcheck disable=SC2029
+          ssh "${DEPLOY_USER}@${DEPLOY_HOST}" \
+            "cd '${DEPLOY_PATH}' && chmod +x deploy.sh rollback.sh && ./deploy.sh '${IMAGE_REF}' '${RELEASE_VERSION}' '${GITHUB_SHA}'"
+
+      - name: Verify public endpoint
+        if: vars.PRODUCTION_URL != ''
+        env:
+          PRODUCTION_URL: ${{ vars.PRODUCTION_URL }}
+        run: curl --fail --show-error --retry 5 --retry-delay 3 "${PRODUCTION_URL%/}/health"
