@@ -21,7 +21,7 @@ jobs:
       contents: read
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -67,7 +67,7 @@ jobs:
       version: ${{ steps.image.outputs.version }}
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Calculate immutable image identity
         id: image
@@ -136,7 +136,7 @@ jobs:
       RELEASE_VERSION: ${{ needs.container.outputs.version }}
     steps:
       - name: Check out deployment files
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Configure SSH
         shell: bash
